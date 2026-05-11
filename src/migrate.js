@@ -130,6 +130,12 @@ export async function runMigrations() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const result = await runMigrations();
-  console.log(`Applied ${result.applied} database migration statements.`);
+  runMigrations()
+    .then((result) => {
+      console.log(`Applied ${result.applied} database migration statements.`);
+    })
+    .catch((error) => {
+      console.error(error);
+      process.exitCode = 1;
+    });
 }
