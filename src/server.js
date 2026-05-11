@@ -38,6 +38,60 @@ app.get("/db/health", async (_request, response) => {
   }
 });
 
+function workspaceKey(request) {
+  return String(request.query.key || request.body?.key || "default").slice(0, 160);
+}
+
+function requireStateNamespace(namespace, response) {
+  if (!["admin-portal", "sheq-app"].includes(namespace)) {
+    response.status(400).json({ ok: false, error: "Unsupported state namespace" });
+    return false;
+  }
+  return true;
+}
+
+app.get("/state/:namespace", async (request, response) => {
+  const { namespace } = request.params;
+  if (!requireStateNamespace(namespace, response)) return;
+
+  try {
+    const [rows] = await pool.execute(
+      "SELECT payload, updated_at FROM app_state_snapshots WHERE namespace = ? AND workspace_key = ?",
+      [namespace, workspaceKey(request)]
+    );
+    response.json({
+      ok: true,
+      state: rows[0]?.payload || null,
+      updatedAt: rows[0]?.updated_at || null
+    });
+  } catch (error) {
+    response.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.put("/state/:namespace", async (request, response) => {
+  const { namespace } = request.params;
+  if (!requireStateNamespace(namespace, response)) return;
+
+  const payload = request.body?.state;
+  if (!payload || typeof payload !== "object") {
+    response.status(400).json({ ok: false, error: "State payload is required" });
+    return;
+  }
+
+  try {
+    await pool.execute(
+      `INSERT INTO app_state_snapshots (namespace, workspace_key, payload)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE payload = VALUES(payload), updated_at = CURRENT_TIMESTAMP`,
+      [namespace, workspaceKey(request), JSON.stringify(payload)]
+    );
+    response.json({ ok: true });
+  } catch (error) {
+    response.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 app.post("/admin/migrate", async (request, response) => {
   const suppliedKey = request.get("x-admin-task-key") || request.query.key;
 
