@@ -15,5 +15,6 @@ export const config = {
   corsOrigins: String(process.env.CORS_ORIGINS || "")
     .split(",")
     .map((origin) => origin.trim())
-    .filter(Boolean)
+    .filter(Boolean),
+  adminTaskKey: process.env.ADMIN_TASK_KEY || process.env.JWT_SECRET || ""
 };

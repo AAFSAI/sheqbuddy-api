@@ -1,6 +1,5 @@
+import { pathToFileURL } from "node:url";
 import { createPool } from "./db.js";
-
-const pool = createPool();
 
 const statements = [
   `CREATE TABLE IF NOT EXISTS tenants (
@@ -117,11 +116,20 @@ const statements = [
   )`
 ];
 
-try {
-  for (const statement of statements) {
-    await pool.query(statement);
+export async function runMigrations() {
+  const pool = createPool();
+
+  try {
+    for (const statement of statements) {
+      await pool.query(statement);
+    }
+    return { applied: statements.length };
+  } finally {
+    await pool.end();
   }
-  console.log(`Applied ${statements.length} database migration statements.`);
-} finally {
-  await pool.end();
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const result = await runMigrations();
+  console.log(`Applied ${result.applied} database migration statements.`);
 }

@@ -2,6 +2,7 @@ import cors from "cors";
 import express from "express";
 import { config } from "./config.js";
 import { createPool } from "./db.js";
+import { runMigrations } from "./migrate.js";
 
 const app = express();
 const pool = createPool();
@@ -32,6 +33,38 @@ app.get("/db/health", async (_request, response) => {
   try {
     const [rows] = await pool.query("SELECT 1 AS ok");
     response.json({ ok: rows[0]?.ok === 1 });
+  } catch (error) {
+    response.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.post("/admin/migrate", async (request, response) => {
+  const suppliedKey = request.get("x-admin-task-key") || request.query.key;
+
+  if (!config.adminTaskKey || suppliedKey !== config.adminTaskKey) {
+    response.status(403).json({ ok: false, error: "Forbidden" });
+    return;
+  }
+
+  try {
+    const result = await runMigrations();
+    response.json({ ok: true, ...result });
+  } catch (error) {
+    response.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.get("/admin/migrate", async (request, response) => {
+  const suppliedKey = request.query.key;
+
+  if (!config.adminTaskKey || suppliedKey !== config.adminTaskKey) {
+    response.status(403).json({ ok: false, error: "Forbidden" });
+    return;
+  }
+
+  try {
+    const result = await runMigrations();
+    response.json({ ok: true, ...result });
   } catch (error) {
     response.status(500).json({ ok: false, error: error.message });
   }
