@@ -92,6 +92,37 @@ app.put("/state/:namespace", async (request, response) => {
   }
 });
 
+app.post("/integrations/users/import", async (request, response) => {
+  const { tenantId = "default", source = "flat-file", users = [], divisions = [] } = request.body || {};
+
+  if (!Array.isArray(users)) {
+    response.status(400).json({ ok: false, error: "users must be an array" });
+    return;
+  }
+
+  try {
+    await pool.execute(
+      `INSERT INTO app_state_snapshots (namespace, workspace_key, payload)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE payload = VALUES(payload), updated_at = CURRENT_TIMESTAMP`,
+      [
+        "user-import",
+        String(tenantId).slice(0, 160),
+        JSON.stringify({
+          source,
+          tenantId,
+          users,
+          divisions: Array.isArray(divisions) ? divisions : [],
+          importedAt: new Date().toISOString()
+        })
+      ]
+    );
+    response.json({ ok: true, importedUsers: users.length, importedDivisions: Array.isArray(divisions) ? divisions.length : 0 });
+  } catch (error) {
+    response.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 app.post("/admin/migrate", async (request, response) => {
   const suppliedKey = request.get("x-admin-task-key") || request.query.key;
 
