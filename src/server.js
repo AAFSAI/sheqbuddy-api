@@ -42,6 +42,24 @@ function workspaceKey(request) {
   return String(request.query.key || request.body?.key || "default").slice(0, 160);
 }
 
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function parseStatePayload(payload) {
+  if (!payload) return null;
+  if (typeof payload === "string") return JSON.parse(payload);
+  return payload;
+}
+
+function nextRegistrationId(registrations = []) {
+  const highest = registrations.reduce((max, item) => {
+    const number = Number(String(item.id || "").replace(/\D/g, ""));
+    return Number.isFinite(number) && number > max ? number : max;
+  }, 0);
+  return `REG-${String(highest + 1).padStart(4, "0")}`;
+}
+
 function requireStateNamespace(namespace, response) {
   if (!["admin-portal", "sheq-app"].includes(namespace)) {
     response.status(400).json({ ok: false, error: "Unsupported state namespace" });
@@ -87,6 +105,55 @@ app.put("/state/:namespace", async (request, response) => {
       [namespace, workspaceKey(request), JSON.stringify(payload)]
     );
     response.json({ ok: true });
+  } catch (error) {
+    response.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.post("/registrations/public", async (request, response) => {
+  const data = request.body || {};
+  const company = String(data.company || "").trim();
+  const contactName = String(data.contactName || data.name || "").trim();
+  const email = String(data.email || "").trim();
+
+  if (!company || !contactName || !email) {
+    response.status(400).json({ ok: false, error: "Company, contact name and email are required" });
+    return;
+  }
+
+  try {
+    const [rows] = await pool.execute(
+      "SELECT payload FROM app_state_snapshots WHERE namespace = ? AND workspace_key = ?",
+      ["admin-portal", "sheqbuddy-admin"]
+    );
+    const state = parseStatePayload(rows[0]?.payload) || {};
+    const registrations = Array.isArray(state.registrations) ? state.registrations : [];
+    const registration = {
+      id: nextRegistrationId(registrations),
+      createdAt: todayIso(),
+      company,
+      contactName,
+      email,
+      phone: String(data.phone || "").trim(),
+      plan: data.plan || "Starter - 10 users",
+      requestedUsers: String(data.requestedUsers || data.users || "").trim(),
+      paymentMethod: data.paymentMethod || "Pending",
+      paymentReference: data.paymentReference || "",
+      paymentStatus: "Pending",
+      stage: "Pending payment",
+      activationCode: "",
+      notes: String(data.notes || "").trim(),
+      source: "public-website"
+    };
+    const nextState = { ...state, registrations: [registration, ...registrations] };
+
+    await pool.execute(
+      `INSERT INTO app_state_snapshots (namespace, workspace_key, payload)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE payload = VALUES(payload), updated_at = CURRENT_TIMESTAMP`,
+      ["admin-portal", "sheqbuddy-admin", JSON.stringify(nextState)]
+    );
+    response.status(201).json({ ok: true, registrationId: registration.id });
   } catch (error) {
     response.status(500).json({ ok: false, error: error.message });
   }
