@@ -24,6 +24,20 @@ Use the Hostinger database values:
 - `DB_USER=u998300609_sheqbuddyuser`
 - `DB_PASSWORD=<your database password>`
 
+For automatic registration emails, add:
+
+- `EMAIL_PROVIDER=smtp`
+- `EMAIL_FROM=info@sheqbuddy.com`
+- `REGISTRATION_NOTIFY_TO=info@sheqbuddy.com`
+- `SMTP_HOST=smtp.hostinger.com`
+- `SMTP_PORT=465`
+- `SMTP_SECURE=true`
+- `SMTP_USER=info@sheqbuddy.com`
+- `SMTP_PASS=<your email mailbox password>`
+
+The public registration endpoint sends an internal setup notification to
+`REGISTRATION_NOTIFY_TO` and a confirmation email to the customer contact email.
+
 ## Database migration
 
 Run:

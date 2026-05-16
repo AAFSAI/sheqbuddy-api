@@ -2,6 +2,7 @@ import cors from "cors";
 import express from "express";
 import { config } from "./config.js";
 import { createPool } from "./db.js";
+import { sendRegistrationEmails } from "./email.js";
 import { runMigrations } from "./migrate.js";
 
 const app = express();
@@ -168,7 +169,11 @@ app.post("/registrations/public", async (request, response) => {
        ON DUPLICATE KEY UPDATE payload = VALUES(payload), updated_at = CURRENT_TIMESTAMP`,
       ["admin-portal", "sheqbuddy-admin", JSON.stringify(nextState)]
     );
-    response.status(201).json({ ok: true, registrationId: registration.id });
+    const emailResult = await sendRegistrationEmails(registration).catch((error) => ({
+      sent: false,
+      reason: error.message
+    }));
+    response.status(201).json({ ok: true, registrationId: registration.id, email: emailResult });
   } catch (error) {
     response.status(500).json({ ok: false, error: error.message });
   }
