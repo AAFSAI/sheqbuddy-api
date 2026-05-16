@@ -6,12 +6,27 @@ import { runMigrations } from "./migrate.js";
 
 const app = express();
 const pool = createPool();
+const defaultCorsOrigins = [
+  "https://sheqbuddy.com",
+  "https://www.sheqbuddy.com",
+  "https://register.sheqbuddy.com",
+  "https://app.sheqbuddy.com",
+  "https://demo.sheqbuddy.com",
+  "http://127.0.0.1:8100",
+  "http://127.0.0.1:8101",
+  "http://127.0.0.1:8140"
+];
+const allowedOrigins = new Set([...defaultCorsOrigins, ...config.corsOrigins].map((origin) => origin.toLowerCase()));
+
+function normalizeOrigin(origin = "") {
+  return origin.toLowerCase().replace(/\/$/, "");
+}
 
 app.use(express.json({ limit: "1mb" }));
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || config.corsOrigins.length === 0 || config.corsOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.has(normalizeOrigin(origin))) {
         callback(null, true);
         return;
       }
