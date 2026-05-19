@@ -84,6 +84,26 @@ function mergeById(existingItems = [], incomingItems = [], idField = "id") {
   return [...merged.values()];
 }
 
+function mergeByIdentity(existingItems = [], incomingItems = [], fields = ["id"]) {
+  const merged = new Map();
+  const keyFor = (item) => fields.map((field) => item?.[field]).find(Boolean);
+
+  asArray(existingItems).forEach((item) => {
+    const key = keyFor(item);
+    if (key) merged.set(key, item);
+  });
+  asArray(incomingItems).forEach((item) => {
+    const key = keyFor(item);
+    if (key) merged.set(key, item);
+  });
+
+  return [...merged.values()];
+}
+
+function preferIncomingValue(incomingValue, existingValue) {
+  return incomingValue === undefined || incomingValue === null || incomingValue === "" ? existingValue : incomingValue;
+}
+
 function appAccessLink(value = "https://app.sheqbuddy.com") {
   return String(value || "https://app.sheqbuddy.com").replace(/\/download\/?$/i, "");
 }
@@ -106,6 +126,61 @@ function mergeAdminPortalState(existingPayload, incomingPayload) {
     devices: mergeById(existing.devices, incoming.devices),
     emails: mergeById(existing.emails, incoming.emails),
     loggedIn: false
+  };
+}
+
+function mergeCounters(existingCounters = {}, incomingCounters = {}) {
+  const keys = new Set([...Object.keys(existingCounters), ...Object.keys(incomingCounters)]);
+  return [...keys].reduce((next, key) => {
+    next[key] = Math.max(Number(existingCounters[key] || 0), Number(incomingCounters[key] || 0));
+    return next;
+  }, {});
+}
+
+function mergeSheqAppState(existingPayload, incomingPayload) {
+  const existing = parseStatePayload(existingPayload) || {};
+  const incoming = parseStatePayload(incomingPayload) || {};
+  const existingOrg = existing.org || {};
+  const incomingOrg = incoming.org || {};
+  const existingLicence = existingOrg.licence || {};
+  const incomingLicence = incomingOrg.licence || {};
+
+  return {
+    ...existing,
+    ...incoming,
+    session: null,
+    counters: mergeCounters(existing.counters, incoming.counters),
+    notificationSettings: {
+      ...(existing.notificationSettings || {}),
+      ...(incoming.notificationSettings || {})
+    },
+    syncQueue: mergeByIdentity(existing.syncQueue, incoming.syncQueue, ["id", "entryId"]),
+    notifications: mergeByIdentity(existing.notifications, incoming.notifications, ["id", "notificationId"]),
+    entries: mergeByIdentity(existing.entries, incoming.entries, ["id"]),
+    org: {
+      ...existingOrg,
+      ...incomingOrg,
+      company: preferIncomingValue(incomingOrg.company, existingOrg.company),
+      tenantId: preferIncomingValue(incomingOrg.tenantId, existingOrg.tenantId),
+      activationCode: preferIncomingValue(incomingOrg.activationCode, existingOrg.activationCode),
+      adminEmail: preferIncomingValue(incomingOrg.adminEmail, existingOrg.adminEmail),
+      adminPassword: preferIncomingValue(incomingOrg.adminPassword, existingOrg.adminPassword),
+      seniorManagerEmail: preferIncomingValue(incomingOrg.seniorManagerEmail, existingOrg.seniorManagerEmail),
+      userAdminUnlocked: false,
+      licence: {
+        ...existingLicence,
+        ...incomingLicence,
+        id: preferIncomingValue(incomingLicence.id, existingLicence.id),
+        status: preferIncomingValue(incomingLicence.status, existingLicence.status),
+        userLimit: preferIncomingValue(incomingLicence.userLimit, existingLicence.userLimit),
+        renewalDate: preferIncomingValue(incomingLicence.renewalDate, existingLicence.renewalDate),
+        lastValidatedAt: preferIncomingValue(incomingLicence.lastValidatedAt, existingLicence.lastValidatedAt),
+        offlineGraceDays: preferIncomingValue(incomingLicence.offlineGraceDays, existingLicence.offlineGraceDays)
+      },
+      divisions: mergeByIdentity(existingOrg.divisions, incomingOrg.divisions, ["id", "name"]),
+      users: mergeByIdentity(existingOrg.users, incomingOrg.users, ["id", "email"]),
+      devices: mergeByIdentity(existingOrg.devices, incomingOrg.devices, ["id", "deviceId"])
+    }
   };
 }
 
@@ -162,6 +237,12 @@ app.put("/state/:namespace", async (request, response) => {
         [namespace, workspaceKey(request)]
       );
       stateToSave = mergeAdminPortalState(rows[0]?.payload, payload);
+    } else if (namespace === "sheq-app") {
+      const [rows] = await pool.execute(
+        "SELECT payload FROM app_state_snapshots WHERE namespace = ? AND workspace_key = ?",
+        [namespace, workspaceKey(request)]
+      );
+      stateToSave = mergeSheqAppState(rows[0]?.payload, payload);
     }
 
     await pool.execute(
