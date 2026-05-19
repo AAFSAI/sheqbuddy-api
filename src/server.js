@@ -68,6 +68,47 @@ function parseStatePayload(payload) {
   return payload;
 }
 
+function asArray(value) {
+  if (Array.isArray(value)) return value;
+  return value ? [value] : [];
+}
+
+function mergeById(existingItems = [], incomingItems = [], idField = "id") {
+  const merged = new Map();
+  asArray(existingItems).forEach((item) => {
+    if (item?.[idField]) merged.set(item[idField], item);
+  });
+  asArray(incomingItems).forEach((item) => {
+    if (item?.[idField]) merged.set(item[idField], item);
+  });
+  return [...merged.values()];
+}
+
+function appAccessLink(value = "https://app.sheqbuddy.com") {
+  return String(value || "https://app.sheqbuddy.com").replace(/\/download\/?$/i, "");
+}
+
+function mergeAdminPortalState(existingPayload, incomingPayload) {
+  const existing = parseStatePayload(existingPayload) || {};
+  const incoming = parseStatePayload(incomingPayload) || {};
+
+  return {
+    ...existing,
+    ...incoming,
+    settings: {
+      ...(existing.settings || {}),
+      ...(incoming.settings || {}),
+      downloadLink: appAccessLink(incoming.settings?.downloadLink || existing.settings?.downloadLink)
+    },
+    registrations: mergeById(existing.registrations, incoming.registrations),
+    licences: mergeById(existing.licences, incoming.licences),
+    tenants: mergeById(existing.tenants, incoming.tenants),
+    devices: mergeById(existing.devices, incoming.devices),
+    emails: mergeById(existing.emails, incoming.emails),
+    loggedIn: false
+  };
+}
+
 function nextRegistrationId(registrations = []) {
   const highest = registrations.reduce((max, item) => {
     const number = Number(String(item.id || "").replace(/\D/g, ""));
@@ -114,11 +155,20 @@ app.put("/state/:namespace", async (request, response) => {
   }
 
   try {
+    let stateToSave = payload;
+    if (namespace === "admin-portal") {
+      const [rows] = await pool.execute(
+        "SELECT payload FROM app_state_snapshots WHERE namespace = ? AND workspace_key = ?",
+        [namespace, workspaceKey(request)]
+      );
+      stateToSave = mergeAdminPortalState(rows[0]?.payload, payload);
+    }
+
     await pool.execute(
       `INSERT INTO app_state_snapshots (namespace, workspace_key, payload)
        VALUES (?, ?, ?)
        ON DUPLICATE KEY UPDATE payload = VALUES(payload), updated_at = CURRENT_TIMESTAMP`,
-      [namespace, workspaceKey(request), JSON.stringify(payload)]
+      [namespace, workspaceKey(request), JSON.stringify(stateToSave)]
     );
     response.json({ ok: true });
   } catch (error) {
