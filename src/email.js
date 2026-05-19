@@ -37,6 +37,7 @@ function registrationAdminText(registration) {
 
 Registration: ${registration.id}
 Company: ${registration.company}
+ACN / ABN: ${registration.businessNumber || "-"}
 Contact: ${registration.contactName}
 Email: ${registration.email}
 Phone: ${registration.phone || "-"}
@@ -59,6 +60,7 @@ Thank you for registering ${registration.company} for SHEQBuddy.
 Your registration request has been received.
 
 Registration reference: ${registration.id}
+ACN / ABN: ${registration.businessNumber || "-"}
 Approx. users: ${registration.requestedUsers || "-"}
 Status: Pending payment confirmation and setup approval
 

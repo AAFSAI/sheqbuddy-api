@@ -279,6 +279,7 @@ app.post("/registrations/public", async (request, response) => {
       id: nextRegistrationId(registrations),
       createdAt: todayIso(),
       company,
+      businessNumber: String(data.businessNumber || data.acnAbn || data.abn || "").trim(),
       contactName,
       email,
       phone: String(data.phone || "").trim(),
